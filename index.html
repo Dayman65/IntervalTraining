@@ -1,0 +1,690 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PulseFlow Interval Trainer Pro</title>
+  <style>
+    :root {
+      --bg: #090d16;
+      --card: #131a29;
+      --card-border: #222f46;
+      --primary: #f97316;
+      --primary-glow: rgba(249, 115, 22, 0.35);
+      --work: #10b981;
+      --rest: #06b6d4;
+      --prep: #f59e0b;
+      --text: #f3f4f6;
+      --text-muted: #94a3b8;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { background-color: var(--bg); color: var(--text); min-height: 100vh; display: flex; flex-direction: column; align-items: center; padding-bottom: 40px; }
+    
+    header { width: 100%; max-width: 900px; padding: 16px 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--card-border); }
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 1.25rem; color: #fff; }
+    .brand span { color: var(--primary); }
+
+    /* Tabs */
+    nav.tabs { display: flex; gap: 8px; margin: 16px 0; width: 100%; max-width: 900px; padding: 0 16px; overflow-x: auto; }
+    .tab-btn { flex: 1; min-width: 120px; padding: 10px 14px; background: var(--card); border: 1px solid var(--card-border); color: var(--text-muted); border-radius: 8px; font-weight: 600; cursor: pointer; transition: 0.2s; white-space: nowrap; }
+    .tab-btn.active { background: #1e293b; border-color: var(--primary); color: #fff; box-shadow: 0 0 12px var(--primary-glow); }
+    .tab-btn.add-btn { flex: 0 0 auto; min-width: 40px; background: #1e293b; color: var(--primary); border-style: dashed; }
+
+    main { width: 100%; max-width: 900px; padding: 0 16px; }
+    .view-panel { display: none; }
+    .view-panel.active { display: block; }
+
+    /* HUD Card */
+    .hud-card { background: var(--card); border: 1px solid var(--card-border); border-radius: 16px; padding: 24px; display: flex; flex-direction: column; align-items: center; text-align: center; position: relative; overflow: hidden; }
+    .phase-badge { display: inline-block; padding: 6px 16px; font-size: 0.85rem; font-weight: 800; letter-spacing: 1.5px; text-transform: uppercase; border-radius: 20px; margin-bottom: 12px; }
+    .phase-badge.work { background: rgba(16, 185, 129, 0.2); color: var(--work); border: 1px solid var(--work); }
+    .phase-badge.rest { background: rgba(6, 182, 212, 0.2); color: var(--rest); border: 1px solid var(--rest); }
+    .phase-badge.prep { background: rgba(245, 158, 11, 0.2); color: var(--prep); border: 1px solid var(--prep); }
+    .current-exercise-title { font-size: 2rem; font-weight: 800; margin-bottom: 20px; min-height: 48px; }
+
+    /* Timer SVG */
+    .timer-svg-container { position: relative; width: 240px; height: 240px; margin: 0 0 24px; }
+    .timer-svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+    .timer-circle-bg { fill: none; stroke: #1e293b; stroke-width: 12; }
+    .timer-circle-progress { fill: none; stroke: var(--primary); stroke-width: 12; stroke-linecap: round; stroke-dasharray: 691; stroke-dashoffset: 0; transition: stroke-dashoffset 0.2s linear, stroke 0.3s ease; }
+    .timer-center-text { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; }
+    .time-digits { font-size: 4rem; font-weight: 900; font-variant-numeric: tabular-nums; line-height: 1; }
+    .total-time-sub { margin-top: 6px; font-size: 0.85rem; color: var(--text-muted); }
+
+    .up-next-banner { width: 100%; background: #0f172a; border: 1px dashed var(--card-border); border-radius: 10px; padding: 12px 16px; margin-bottom: 24px; display: flex; justify-content: space-between; font-size: 0.95rem; }
+    .up-next-banner span:last-child { font-weight: 700; color: #fff; }
+
+    .control-row { display: flex; gap: 12px; width: 100%; }
+    .btn { flex: 1; padding: 12px; border-radius: 10px; border: none; font-size: 1rem; font-weight: 700; cursor: pointer; transition: 0.2s; color: #fff; }
+    .btn-primary { background: var(--primary); box-shadow: 0 4px 14px var(--primary-glow); }
+    .btn-secondary { background: #334155; }
+    .btn-sm { padding: 6px 10px; font-size: 0.8rem; font-weight: 600; border-radius: 6px; border: 1px solid var(--card-border); background: #1e293b; color: #fff; cursor: pointer; }
+    
+    /* HUD Expanded Routine */
+    .hud-routine-overlay { display: none; margin-top: 20px; width: 100%; text-align: left; background: #0f172a; border-radius: 10px; padding: 16px; border: 1px solid var(--card-border); max-height: 300px; overflow-y: auto; }
+    .hud-routine-overlay.open { display: block; }
+    .hud-routine-item { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #1e293b; font-size: 0.9rem; }
+    .hud-routine-item.active-item { color: var(--primary); font-weight: 700; background: rgba(249, 115, 22, 0.1); border-radius: 4px; padding: 8px; }
+
+    /* Library Cards */
+    .section-title { font-size: 1.25rem; font-weight: 800; margin: 16px 0; display: flex; justify-content: space-between; align-items: center; }
+    .grid-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 12px; }
+    .drill-card { background: var(--card); border: 1px solid var(--card-border); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+    .drill-name { font-weight: 700; font-size: 1.05rem; }
+    .drill-cue { font-size: 0.85rem; color: var(--text-muted); line-height: 1.4; }
+
+    /* Builder & Loops */
+    .builder-container { display: flex; flex-direction: column; gap: 12px; }
+    .builder-item { display: flex; justify-content: space-between; align-items: center; padding: 12px; background: var(--card); border: 1px solid var(--card-border); border-radius: 8px; }
+    .builder-loop { background: #0f172a; border: 1px dashed var(--primary); border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+    .loop-header { display: flex; justify-content: space-between; align-items: center; font-weight: 700; color: var(--primary); }
+    .loop-items { display: flex; flex-direction: column; gap: 8px; padding-left: 16px; border-left: 2px solid #1e293b; }
+    
+    .preset-row { display: flex; gap: 10px; margin-bottom: 16px; background: #0f172a; padding: 16px; border-radius: 12px; border: 1px solid var(--card-border); }
+    select.preset-dropdown { flex: 1; padding: 10px; background: #090d16; border: 1px solid var(--card-border); color: #fff; border-radius: 8px; font-size: 0.95rem; }
+    
+    /* Modals */
+    .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 100; justify-content: center; align-items: center; }
+    .modal-overlay.open { display: flex; }
+    .modal-content { background: var(--card); border: 1px solid var(--card-border); padding: 24px; border-radius: 12px; width: 90%; max-width: 400px; display: flex; flex-direction: column; gap: 12px; }
+    .modal-content input, .modal-content select { padding: 10px; background: #090d16; border: 1px solid #1e293b; color: #fff; border-radius: 6px; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="brand">⚡ <span>PulseFlow</span> Pro</div>
+    <div style="display: flex; gap: 12px; align-items: center;">
+      <button class="btn-sm" onclick="openSettingsModal()">⚙️ Settings</button>
+    </div>
+  </header>
+
+  <nav class="tabs" id="main-tabs">
+    <!-- Dynamically Populated Tabs -->
+  </nav>
+
+  <main id="main-content">
+    <!-- Dynamically Populated Panels -->
+  </main>
+
+  <!-- Universal Modal -->
+  <div id="modal" class="modal-overlay">
+    <div class="modal-content" id="modal-body">
+      <!-- Modal Content Injected Here -->
+    </div>
+  </div>
+
+  <script>
+    // --- STATE MANAGEMENT ---
+    
+    // Hardcoded Preset Libraries
+    const PRESET_ROUTINES = {
+      "fencing-strip": {
+        name: "Strip-Ready Fencing Warm-Up (12 min)",
+        blocks: [
+          { type: "item", name: "Prep / Adjust Mask & Blade", dur: 5, phase: "prep" },
+          { type: "item", name: "En Garde Hip Openers", dur: 30, phase: "work" },
+          { type: "item", name: "Recovery Stride", dur: 10, phase: "rest" },
+          { type: "item", name: "Fast Advance-Retreat Ladders", dur: 30, phase: "work" },
+          { type: "item", name: "Short Rest", dur: 10, phase: "rest" },
+          { type: "item", name: "Check-Step to Advance-Lunge", dur: 35, phase: "work" },
+          { type: "item", name: "Blade Reset", dur: 15, phase: "rest" },
+          { type: "item", name: "Circle 6 to Parry 4 Shadow", dur: 30, phase: "work" },
+          { type: "item", name: "Short Rest", dur: 10, phase: "rest" },
+          { type: "item", name: "Running Flèche Simulation", dur: 25, phase: "work" }
+        ]
+      },
+      "fencing-bout": {
+        name: "Explosive Bout Priming (5 min)",
+        blocks: [
+          { type: "item", name: "Get Ready on Strip", dur: 5, phase: "prep" },
+          { type: "item", name: "Fast Advance-Retreat Ladders", dur: 25, phase: "work" },
+          { type: "item", name: "Breath Rest", dur: 10, phase: "rest" },
+          { type: "item", name: "Check-Step to Advance-Lunge", dur: 30, phase: "work" },
+          { type: "item", name: "Reset", dur: 10, phase: "rest" },
+          { type: "item", name: "Feint-Disengage Tempo Acceleration", dur: 30, phase: "work" }
+        ]
+      },
+      "hoops-combos": {
+        name: "Separation & Attack Combos (Basketball)",
+        blocks: [
+          { type: "item", name: "Stance Prep", dur: 5, phase: "prep" },
+          { type: "item", name: "Pocket Pounds (Low-to-High)", dur: 30, phase: "work" },
+          { type: "item", name: "Rest & Switch Hand", dur: 10, phase: "rest" },
+          { type: "item", name: "Between-the-Legs to Behind-the-Back", dur: 35, phase: "work" },
+          { type: "item", name: "Active Recovery", dur: 15, phase: "rest" },
+          { type: "item", name: "In-and-Out Cross Burst", dur: 30, phase: "work" }
+        ]
+      },
+      "vertical-plyo": {
+        name: "Plyometric Vertical Jump Intervals",
+        blocks: [
+          { type: "item", name: "Prep Stance", dur: 5, phase: "prep" },
+          { type: "item", name: "Max Height Depth Jumps", dur: 25, phase: "work" },
+          { type: "item", name: "Walk Rest", dur: 20, phase: "rest" },
+          { type: "item", name: "Seated Explosive Box Jumps", dur: 25, phase: "work" },
+          { type: "item", name: "Walk Rest", dur: 20, phase: "rest" },
+          { type: "item", name: "Continuous Ankle Bounding", dur: 20, phase: "work" }
+        ]
+      },
+      "tabata": {
+        name: "Standard Tabata (20s / 10s)",
+        blocks: [
+          { type: "item", name: "Prep", dur: 5, phase: "prep" },
+          { 
+            type: "loop", times: 8, 
+            items: [
+              { type: "item", name: "Maximum Effort", dur: 20, phase: "work" },
+              { type: "item", name: "Rest", dur: 10, phase: "rest" }
+            ]
+          }
+        ]
+      }
+    };
+
+    let appData = {
+      sections: [
+        {
+          id: "fencing", title: "⚔️ Fencing Prep",
+          drills: [
+            { name: "En Garde Hip Openers", dur: 30, cue: "Sit deep into en garde, pulsed 3s hold.", type: "work" },
+            { name: "Fast Advance-Retreat Ladders", dur: 30, cue: "Small, rapid advances and retreats.", type: "work" },
+            { name: "Check-Step to Advance-Lunge", dur: 35, cue: "Sharp half-step check, explode forward.", type: "work" },
+            { name: "Circle 6 to Parry 4", dur: 30, cue: "Tight fingertip circles, snappy transition.", type: "work" },
+            { name: "Feint-Disengage Tempo", dur: 30, cue: "Wait for reaction, accelerate under guard.", type: "work" },
+            { name: "Running Flèche Simulation", dur: 25, cue: "Explosive cross-burst sprint.", type: "work" }
+          ]
+        },
+        {
+          id: "hoops", title: "🏀 Ball Handling",
+          drills: [
+            { name: "Pocket Pounds (Low-to-High)", dur: 30, cue: "3 knee snaps, 3 shoulder slams.", type: "work" },
+            { name: "Figure-8 Dribble", dur: 30, cue: "Weave the ball through legs continuously.", type: "work" },
+            { name: "Between-the-Legs to Behind-Back", dur: 30, cue: "Drop hips low, snap cleanly.", type: "work" },
+            { name: "In-and-Out Cross Burst", dur: 30, cue: "Hard shoulder fake, explode across.", type: "work" },
+            { name: "Synchronous Heavy Pounds (2-Ball)", dur: 30, cue: "Dribble both basketballs at max velocity.", type: "work" },
+            { name: "Alternating Piston Dribble (2-Ball)", dur: 30, cue: "Rapid alternating piston tempo.", type: "work" }
+          ]
+        },
+        {
+          id: "plyos", title: "🦘 Vertical Plyos",
+          drills: [
+            { name: "Max Height Depth Jumps", dur: 25, cue: "Step off box, explode up immediately upon ground contact.", type: "work" },
+            { name: "Seated Explosive Box Jumps", dur: 25, cue: "Sit parallel, generate power from dead stop onto box.", type: "work" },
+            { name: "Continuous Ankle Bounding", dur: 20, cue: "Stiff knees, bounce rapidly using only calves and ankles.", type: "work" },
+            { name: "Max Effort Tuck Jumps", dur: 20, cue: "Drive knees to chest, minimal ground contact time.", type: "work" },
+            { name: "Broad Jumps", dur: 30, cue: "Reset fully between jumps, focus on maximum horizontal distance.", type: "work" }
+          ]
+        }
+      ],
+      routineName: PRESET_ROUTINES["fencing-strip"].name,
+      builderRoutine: JSON.parse(JSON.stringify(PRESET_ROUTINES["fencing-strip"].blocks)),
+      voiceRate: 1.05,
+      voiceURI: null
+    };
+
+    let flatRoutine = []; 
+    let currentIdx = 0;
+    let secondsRemaining = 0;
+    let isRunning = false;
+    let timerInterval = null;
+    let audioCtx = null;
+    let activeTab = 'tab-hud';
+    
+    // --- VOICE SETUP ---
+    let availableVoices = [];
+    
+    function loadVoices() {
+      availableVoices = window.speechSynthesis.getVoices();
+      if (!appData.voiceURI && availableVoices.length > 0) {
+        let bestVoice = availableVoices.find(v => v.name.includes("Premium") || v.name.includes("Enhanced") || v.name.includes("Zira") || v.name.includes("Siri"));
+        if (bestVoice) {
+          appData.voiceURI = bestVoice.voiceURI;
+        }
+      }
+    }
+    
+    if ('speechSynthesis' in window) {
+      loadVoices();
+      if (speechSynthesis.onvoiceschanged !== undefined) {
+        speechSynthesis.onvoiceschanged = loadVoices;
+      }
+    }
+
+    // --- AUDIO ---
+    function initAudio() {
+      if (!audioCtx && (window.AudioContext || window.webkitAudioContext)) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      if (audioCtx && audioCtx.state === "suspended") audioCtx.resume();
+    }
+    
+    function playBeep(f=600, d=0.1) {
+      if(!audioCtx) return;
+      const osc = audioCtx.createOscillator(), gain = audioCtx.createGain();
+      osc.frequency.value = f; osc.connect(gain); gain.connect(audioCtx.destination);
+      gain.gain.setValueAtTime(0.2, audioCtx.currentTime); gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + d);
+      osc.start(); osc.stop(audioCtx.currentTime + d);
+    }
+    
+    function speak(text) {
+      if (!("speechSynthesis" in window)) return;
+      window.speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      u.rate = appData.voiceRate;
+      
+      if (appData.voiceURI) {
+        const selectedVoice = availableVoices.find(v => v.voiceURI === appData.voiceURI);
+        if (selectedVoice) u.voice = selectedVoice;
+      }
+      
+      window.speechSynthesis.speak(u);
+    }
+
+    // --- ENGINE & FLATTENING ---
+    function generateFlatRoutine() {
+      flatRoutine = [];
+      appData.builderRoutine.forEach(block => {
+        if (block.type === 'item') {
+          flatRoutine.push({...block});
+        } else if (block.type === 'loop') {
+          for (let i=0; i < block.times; i++) {
+            block.items.forEach(sub => flatRoutine.push({...sub, loopName: `Loop ${i+1}/${block.times}`}));
+          }
+        }
+      });
+    }
+
+    // --- TIMER LOGIC ---
+    function updateHUD() {
+      if (flatRoutine.length === 0) return;
+      const cur = flatRoutine[currentIdx];
+      const nxt = flatRoutine[currentIdx + 1];
+
+      document.getElementById("hud-badge").className = `phase-badge ${cur.phase}`;
+      document.getElementById("hud-badge").textContent = cur.phase.toUpperCase();
+      document.getElementById("hud-title").textContent = cur.name;
+      document.getElementById("time-display").textContent = secondsRemaining < 10 ? "0"+secondsRemaining : secondsRemaining;
+      document.getElementById("progress-sub").textContent = `Interval ${currentIdx + 1} of ${flatRoutine.length}`;
+      document.getElementById("hud-up-next").textContent = nxt ? `${nxt.name} (${nxt.dur}s)` : "Finish";
+      document.getElementById("hud-routine-name").textContent = appData.routineName;
+
+      const circ = 691;
+      const pct = (cur.dur - secondsRemaining) / cur.dur;
+      document.getElementById("timer-progress").style.strokeDashoffset = circ * (1 - pct);
+      document.getElementById("timer-progress").style.stroke = `var(--${cur.phase})`;
+      
+      renderHUDList(); 
+    }
+
+    function tick() {
+      const cur = flatRoutine[currentIdx];
+      const nxt = flatRoutine[currentIdx + 1];
+
+      if (secondsRemaining === 5 && nxt) speak(`Up next: ${nxt.name}`);
+      if (secondsRemaining <= 3 && secondsRemaining > 0) playBeep(450, 0.1);
+
+      if (secondsRemaining > 0) {
+        secondsRemaining--;
+        updateHUD();
+      } else {
+        playBeep(850, 0.35);
+        if (currentIdx < flatRoutine.length - 1) {
+          currentIdx++;
+          secondsRemaining = flatRoutine[currentIdx].dur;
+          speak(`${flatRoutine[currentIdx].phase}: ${flatRoutine[currentIdx].name}`);
+          updateHUD();
+        } else {
+          resetTimer();
+          document.getElementById("hud-title").textContent = "Workout Complete!";
+          speak("Great job! Workout completed.");
+        }
+      }
+    }
+
+    function toggleTimer() {
+      initAudio();
+      if(flatRoutine.length === 0) generateFlatRoutine();
+      
+      const btn = document.getElementById("btn-start");
+      if (isRunning) {
+        clearInterval(timerInterval); isRunning = false; btn.textContent = "▶ Resume";
+      } else {
+        if (currentIdx === 0 && secondsRemaining === flatRoutine[0].dur) speak(`Starting: ${flatRoutine[0].name}`);
+        isRunning = true; btn.textContent = "⏸ Pause";
+        timerInterval = setInterval(tick, 1000);
+      }
+    }
+
+    function resetTimer() {
+      clearInterval(timerInterval); isRunning = false;
+      generateFlatRoutine();
+      currentIdx = 0; 
+      secondsRemaining = flatRoutine.length > 0 ? flatRoutine[0].dur : 0;
+      document.getElementById("btn-start").textContent = "▶ Start Workout";
+      updateHUD();
+    }
+
+    // --- PRESETS ---
+    window.loadPreset = function() {
+      const pKey = document.getElementById("preset-selector").value;
+      if (PRESET_ROUTINES[pKey]) {
+        appData.routineName = PRESET_ROUTINES[pKey].name;
+        appData.builderRoutine = JSON.parse(JSON.stringify(PRESET_ROUTINES[pKey].blocks));
+        generateFlatRoutine();
+        resetTimer();
+        renderApp();
+      }
+    };
+
+    // --- UI RENDERING ---
+    function renderApp() {
+      const tabs = document.getElementById("main-tabs");
+      tabs.innerHTML = `<button class="tab-btn ${activeTab==='tab-hud'?'active':''}" onclick="switchTab('tab-hud')">⏱️ Timer HUD</button>`;
+      
+      appData.sections.forEach(sec => {
+        tabs.innerHTML += `<button class="tab-btn ${activeTab===sec.id?'active':''}" onclick="switchTab('${sec.id}')">${sec.title}</button>`;
+      });
+      
+      tabs.innerHTML += `<button class="tab-btn ${activeTab==='tab-builder'?'active':''}" onclick="switchTab('tab-builder')">📝 Builder</button>`;
+      tabs.innerHTML += `<button class="tab-btn add-btn" onclick="openNewSectionModal()">+</button>`;
+
+      const main = document.getElementById("main-content");
+      main.innerHTML = `
+        <section id="tab-hud" class="view-panel ${activeTab==='tab-hud'?'active':''}">
+          <div style="text-align:center; font-weight:700; color:var(--primary); margin-bottom:12px; font-size:1.1rem;" id="hud-routine-name">
+            ${appData.routineName}
+          </div>
+          <div class="hud-card">
+            <div id="hud-badge" class="phase-badge prep">GET READY</div>
+            <div id="hud-title" class="current-exercise-title">Ready to Begin</div>
+            <div class="timer-svg-container">
+              <svg class="timer-svg" viewBox="0 0 240 240">
+                <circle class="timer-circle-bg" cx="120" cy="120" r="110"></circle>
+                <circle id="timer-progress" class="timer-circle-progress" cx="120" cy="120" r="110"></circle>
+              </svg>
+              <div class="timer-center-text">
+                <span id="time-display" class="time-digits">00</span>
+                <span id="progress-sub" class="total-time-sub">Interval 0 of 0</span>
+              </div>
+            </div>
+            <div class="up-next-banner">
+              <span>UP NEXT (Announced at 5s)</span><span id="hud-up-next">—</span>
+            </div>
+            <div class="control-row">
+              <button id="btn-start" class="btn btn-primary" onclick="toggleTimer()">▶ Start Workout</button>
+              <button class="btn btn-secondary" onclick="resetTimer()">↺ Reset</button>
+            </div>
+            <button class="btn-sm" style="margin-top:16px; width:100%;" onclick="toggleHUDList()">Expand Full Workout ▼</button>
+            <div id="hud-routine-list" class="hud-routine-overlay"></div>
+          </div>
+        </section>
+
+        <section id="tab-builder" class="view-panel ${activeTab==='tab-builder'?'active':''}">
+          
+          <div class="preset-row">
+            <select id="preset-selector" class="preset-dropdown">
+              <option value="fencing-strip">Strip-Ready Fencing Warm-Up (12 min)</option>
+              <option value="fencing-bout">Explosive Bout Priming (5 min)</option>
+              <option value="hoops-combos">Separation & Attack Combos (Basketball)</option>
+              <option value="vertical-plyo">Plyometric Vertical Jump Intervals</option>
+              <option value="tabata">Standard Tabata (20s Work / 10s Rest)</option>
+            </select>
+            <button class="btn btn-secondary" style="flex:0 0 auto;" onclick="loadPreset()">Load Preset</button>
+          </div>
+
+          <div class="section-title">
+            <div>
+              <span style="font-size:0.8rem; color:var(--text-muted); display:block; font-weight:normal;">Currently Editing:</span>
+              <span style="color:var(--primary);">${appData.routineName}</span>
+            </div>
+            <div style="display:flex; gap:8px;">
+              <button class="btn-sm" onclick="addLoopToBuilder()">+ Add Loop</button>
+              <button class="btn-sm" onclick="openAddStandardIntervalModal()">+ Add Interval</button>
+            </div>
+          </div>
+          <div id="builder-list" class="builder-container"></div>
+        </section>
+      `;
+
+      appData.sections.forEach(sec => {
+        let drillsHTML = sec.drills.map(d => `
+          <div class="drill-card">
+            <div style="display:flex; justify-content:space-between;">
+              <span class="drill-name">${d.name}</span>
+              <span style="font-size:0.8rem; color:var(--text-muted);">${d.dur}s</span>
+            </div>
+            <p class="drill-cue">${d.cue}</p>
+            <div style="display:flex; gap:8px; margin-top:5px;">
+              <button class="btn-sm" onclick="addDrillToBuilder('${d.name.replace(/'/g, "\\'")}', ${d.dur}, '${d.type}')">+ To Builder</button>
+              <button class="btn-sm" onclick="speak('${d.cue.replace(/'/g, "\\'")}')">🔊 Cue</button>
+            </div>
+          </div>
+        `).join('');
+
+        main.innerHTML += `
+          <section id="${sec.id}" class="view-panel ${activeTab===sec.id?'active':''}">
+            <div class="section-title">
+              ${sec.title}
+              <button class="btn-sm" onclick="openNewDrillModal('${sec.id}')">+ New Drill</button>
+            </div>
+            <div class="grid-list">${drillsHTML}</div>
+          </section>
+        `;
+      });
+
+      renderBuilderList();
+      generateFlatRoutine();
+      if(flatRoutine.length > 0 && !isRunning) resetTimer();
+    }
+
+    function renderBuilderList() {
+      const bList = document.getElementById("builder-list");
+      if(!bList) return;
+      bList.innerHTML = "";
+      appData.builderRoutine.forEach((block, idx) => {
+        if (block.type === 'item') {
+          bList.innerHTML += `
+            <div class="builder-item">
+              <div><span class="phase-badge ${block.phase}" style="font-size:0.6rem; padding:4px 8px; margin:0 8px 0 0;">${block.phase}</span> ${block.name} (${block.dur}s)</div>
+              <button class="btn-sm" style="background:transparent; border:none; color:red;" onclick="removeBuilderBlock(${idx})">✕</button>
+            </div>
+          `;
+        } else if (block.type === 'loop') {
+          let itemsHtml = block.items.map((sub, sIdx) => `
+            <div class="builder-item" style="padding:8px;">
+              <div><span class="phase-badge ${sub.phase}" style="font-size:0.6rem; padding:4px 8px; margin:0 8px 0 0;">${sub.phase}</span> ${sub.name} (${sub.dur}s)</div>
+              <button class="btn-sm" style="background:transparent; border:none; color:red;" onclick="removeLoopItem(${idx}, ${sIdx})">✕</button>
+            </div>
+          `).join('');
+
+          bList.innerHTML += `
+            <div class="builder-loop">
+              <div class="loop-header">
+                <span>🔄 Repeat Block x${block.times}</span>
+                <div style="display:flex; gap:8px;">
+                  <button class="btn-sm" onclick="changeLoopTimes(${idx})">Edit Times</button>
+                  <button class="btn-sm" style="background:#ef4444; border:none;" onclick="removeBuilderBlock(${idx})">Delete Block</button>
+                </div>
+              </div>
+              <div class="loop-items">${itemsHtml}</div>
+              <button class="btn-sm" style="align-self:flex-start;" onclick="openAddStandardIntervalModal(${idx})">+ Add to Loop</button>
+            </div>
+          `;
+        }
+      });
+    }
+
+    function renderHUDList() {
+      const container = document.getElementById("hud-routine-list");
+      if(!container) return;
+      container.innerHTML = flatRoutine.map((item, i) => `
+        <div class="hud-routine-item ${i === currentIdx ? 'active-item' : ''}">
+          <span>${i+1}. ${item.name} ${item.loopName ? ` <small style="color:var(--text-muted)">(${item.loopName})</small>` : ''}</span>
+          <span>${item.dur}s</span>
+        </div>
+      `).join('');
+    }
+
+    // --- ACTIONS & MODALS ---
+    window.switchTab = function(id) { activeTab = id; renderApp(); };
+    window.toggleHUDList = function() { document.getElementById("hud-routine-list").classList.toggle("open"); };
+
+    const modal = document.getElementById("modal");
+    const mBody = document.getElementById("modal-body");
+
+    function closeModal() { modal.classList.remove("open"); }
+
+    window.openSettingsModal = function() {
+      let voiceOptions = availableVoices.map(v => 
+        `<option value="${v.voiceURI}" ${v.voiceURI === appData.voiceURI ? 'selected' : ''}>
+          ${v.name} (${v.lang})
+        </option>`
+      ).join('');
+      
+      if(voiceOptions === "") voiceOptions = `<option>Default System Voice</option>`;
+
+      mBody.innerHTML = `
+        <h3>Audio Settings</h3>
+        
+        <label style="font-size:0.9rem; color:var(--text-muted); margin-top:8px;">Voice Selection</label>
+        <select id="voiceSelect" style="width:100%; margin-bottom:12px;">
+          ${voiceOptions}
+        </select>
+        
+        <label style="font-size:0.9rem; color:var(--text-muted);">Speech Speed: <span id="rateLabel">${appData.voiceRate}</span>x</label>
+        <input type="range" id="voiceRate" min="0.5" max="1.5" step="0.05" value="${appData.voiceRate}" style="width:100%; margin-bottom:12px;" oninput="document.getElementById('rateLabel').innerText = this.value">
+        
+        <div style="display:flex; gap:8px; margin-top:10px;">
+          <button class="btn btn-primary" onclick="saveSettings()">Save & Test</button>
+          <button class="btn btn-secondary" onclick="closeModal()">Close</button>
+        </div>
+      `;
+      modal.classList.add("open");
+    };
+    
+    window.saveSettings = function() {
+      const selected = document.getElementById("voiceSelect").value;
+      if (selected !== "Default System Voice") {
+        appData.voiceURI = selected;
+      }
+      appData.voiceRate = parseFloat(document.getElementById("voiceRate").value);
+      speak("Voice settings updated successfully.");
+      closeModal();
+    };
+
+    window.openNewSectionModal = function() {
+      mBody.innerHTML = `
+        <h3>Create New Section</h3>
+        <input id="secIcon" placeholder="Icon (e.g. 🏋️)" value="🏋️">
+        <input id="secName" placeholder="Section Name">
+        <div style="display:flex; gap:8px; margin-top:10px;">
+          <button class="btn btn-primary" onclick="saveNewSection()">Save</button>
+          <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+        </div>
+      `;
+      modal.classList.add("open");
+    };
+
+    window.saveNewSection = function() {
+      const icon = document.getElementById("secIcon").value || "⚡";
+      const name = document.getElementById("secName").value;
+      if(!name) return alert("Needs a name!");
+      const id = "sec_" + Date.now();
+      appData.sections.push({ id, title: `${icon} ${name}`, drills: [] });
+      closeModal(); renderApp(); switchTab(id);
+    };
+
+    window.openNewDrillModal = function(secId) {
+      mBody.innerHTML = `
+        <h3>Add Drill to Library</h3>
+        <input id="dName" placeholder="Drill Name">
+        <input id="dTime" type="number" placeholder="Duration (seconds)" value="30">
+        <input id="dCue" placeholder="Spoken Audio Cue">
+        <select id="dType"><option value="work">Work (Green)</option><option value="rest">Rest (Blue)</option><option value="prep">Prep (Orange)</option></select>
+        <div style="display:flex; gap:8px; margin-top:10px;">
+          <button class="btn btn-primary" onclick="saveNewDrill('${secId}')">Save</button>
+          <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+        </div>
+      `;
+      modal.classList.add("open");
+    };
+
+    window.saveNewDrill = function(secId) {
+      const sec = appData.sections.find(s => s.id === secId);
+      sec.drills.push({
+        name: document.getElementById("dName").value || "New Drill",
+        dur: parseInt(document.getElementById("dTime").value) || 30,
+        cue: document.getElementById("dCue").value || "",
+        type: document.getElementById("dType").value
+      });
+      closeModal(); renderApp();
+    };
+
+    window.addDrillToBuilder = function(name, dur, phase) {
+      appData.builderRoutine.push({ type: "item", name, dur, phase });
+      appData.routineName = "Custom Sequence"; // Rename if modifying preset
+      generateFlatRoutine();
+      renderApp();
+    };
+
+    window.addLoopToBuilder = function() {
+      appData.builderRoutine.push({ type: "loop", times: 2, items: [] });
+      appData.routineName = "Custom Sequence";
+      renderApp();
+    };
+
+    window.changeLoopTimes = function(idx) {
+      const t = prompt("How many times should this block repeat?", appData.builderRoutine[idx].times);
+      if(t && !isNaN(t)) {
+        appData.builderRoutine[idx].times = parseInt(t);
+        generateFlatRoutine(); renderApp();
+      }
+    };
+
+    window.removeBuilderBlock = function(idx) {
+      appData.builderRoutine.splice(idx, 1);
+      appData.routineName = "Custom Sequence";
+      generateFlatRoutine(); renderApp();
+    };
+
+    window.removeLoopItem = function(loopIdx, itemIdx) {
+      appData.builderRoutine[loopIdx].items.splice(itemIdx, 1);
+      appData.routineName = "Custom Sequence";
+      generateFlatRoutine(); renderApp();
+    };
+
+    window.openAddStandardIntervalModal = function(loopIdx = -1) {
+      mBody.innerHTML = `
+        <h3>Add Interval to ${loopIdx >= 0 ? 'Loop' : 'Sequence'}</h3>
+        <input id="iName" placeholder="Name (e.g. Rest, Burpees)">
+        <input id="iTime" type="number" placeholder="Duration (seconds)" value="15">
+        <select id="iType"><option value="work">Work (Green)</option><option value="rest" selected>Rest (Blue)</option><option value="prep">Prep (Orange)</option></select>
+        <div style="display:flex; gap:8px; margin-top:10px;">
+          <button class="btn btn-primary" onclick="saveStandardInterval(${loopIdx})">Add</button>
+          <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+        </div>
+      `;
+      modal.classList.add("open");
+    };
+
+    window.saveStandardInterval = function(loopIdx) {
+      const item = {
+        type: "item",
+        name: document.getElementById("iName").value || "Interval",
+        dur: parseInt(document.getElementById("iTime").value) || 15,
+        phase: document.getElementById("iType").value
+      };
+      if (loopIdx >= 0) appData.builderRoutine[loopIdx].items.push(item);
+      else appData.builderRoutine.push(item);
+      
+      appData.routineName = "Custom Sequence";
+      closeModal(); generateFlatRoutine(); renderApp();
+    };
+
+    // INIT
+    renderApp();
+  </script>
+</body>
+</html>
