@@ -96,6 +96,7 @@
   <header>
     <div class="brand">⚡ <span>PulseFlow</span> Pro</div>
     <div style="display: flex; gap: 12px; align-items: center;">
+      <span id="wake-status" style="font-size:0.75rem; color:var(--work); display:none;">Awake</span>
       <button class="btn-sm" onclick="openSettingsModal()">⚙️ Settings</button>
     </div>
   </header>
@@ -118,7 +119,6 @@
   <script>
     // --- STATE MANAGEMENT ---
     
-    // Hardcoded Preset Libraries
     const PRESET_ROUTINES = {
       "fencing-strip": {
         name: "Strip-Ready Fencing Warm-Up (12 min)",
@@ -224,6 +224,35 @@
       voiceURI: null
     };
 
+    // --- LOCAL STORAGE PERSISTENCE ---
+    function saveToStorage() {
+      const storageData = {
+        voiceRate: appData.voiceRate,
+        voiceURI: appData.voiceURI,
+        routineName: appData.routineName,
+        builderRoutine: appData.builderRoutine
+      };
+      localStorage.setItem("pulseflow_data", JSON.stringify(storageData));
+    }
+
+    function loadFromStorage() {
+      const data = localStorage.getItem("pulseflow_data");
+      if (data) {
+        try {
+          const parsed = JSON.parse(data);
+          if (parsed.voiceRate !== undefined) appData.voiceRate = parsed.voiceRate;
+          if (parsed.voiceURI !== undefined) appData.voiceURI = parsed.voiceURI;
+          if (parsed.routineName) appData.routineName = parsed.routineName;
+          if (parsed.builderRoutine) appData.builderRoutine = parsed.builderRoutine;
+        } catch (e) {
+          console.warn("Could not parse local storage data.");
+        }
+      }
+    }
+    
+    // Call load on startup
+    loadFromStorage();
+
     let flatRoutine = []; 
     let currentIdx = 0;
     let secondsRemaining = 0;
@@ -231,25 +260,47 @@
     let timerInterval = null;
     let audioCtx = null;
     let activeTab = 'tab-hud';
+    let wakeLock = null;
     
+    // --- WAKE LOCK (Keeps screen ON) ---
+    async function requestWakeLock() {
+      try {
+        if ('wakeLock' in navigator) {
+          wakeLock = await navigator.wakeLock.request('screen');
+          document.getElementById('wake-status').style.display = 'inline';
+          wakeLock.addEventListener('release', () => {
+            document.getElementById('wake-status').style.display = 'none';
+          });
+        }
+      } catch (err) {
+        console.warn(`${err.name}, ${err.message}`);
+      }
+    }
+
+    function releaseWakeLock() {
+      if (wakeLock !== null) {
+        wakeLock.release().then(() => { wakeLock = null; });
+      }
+    }
+
+    document.addEventListener('visibilitychange', async () => {
+      if (wakeLock !== null && document.visibilityState === 'visible' && isRunning) {
+        await requestWakeLock(); // Re-request if you leave and come back
+      }
+    });
+
     // --- VOICE SETUP ---
     let availableVoices = [];
-    
     function loadVoices() {
       availableVoices = window.speechSynthesis.getVoices();
       if (!appData.voiceURI && availableVoices.length > 0) {
         let bestVoice = availableVoices.find(v => v.name.includes("Premium") || v.name.includes("Enhanced") || v.name.includes("Zira") || v.name.includes("Siri"));
-        if (bestVoice) {
-          appData.voiceURI = bestVoice.voiceURI;
-        }
+        if (bestVoice) appData.voiceURI = bestVoice.voiceURI;
       }
     }
-    
     if ('speechSynthesis' in window) {
       loadVoices();
-      if (speechSynthesis.onvoiceschanged !== undefined) {
-        speechSynthesis.onvoiceschanged = loadVoices;
-      }
+      if (speechSynthesis.onvoiceschanged !== undefined) speechSynthesis.onvoiceschanged = loadVoices;
     }
 
     // --- AUDIO ---
@@ -273,12 +324,10 @@
       window.speechSynthesis.cancel();
       const u = new SpeechSynthesisUtterance(text);
       u.rate = appData.voiceRate;
-      
       if (appData.voiceURI) {
         const selectedVoice = availableVoices.find(v => v.voiceURI === appData.voiceURI);
         if (selectedVoice) u.voice = selectedVoice;
       }
-      
       window.speechSynthesis.speak(u);
     }
 
@@ -343,22 +392,29 @@
       }
     }
 
-    function toggleTimer() {
+    async function toggleTimer() {
       initAudio();
       if(flatRoutine.length === 0) generateFlatRoutine();
       
       const btn = document.getElementById("btn-start");
       if (isRunning) {
-        clearInterval(timerInterval); isRunning = false; btn.textContent = "▶ Resume";
+        clearInterval(timerInterval); 
+        isRunning = false; 
+        btn.textContent = "▶ Resume";
+        releaseWakeLock();
       } else {
         if (currentIdx === 0 && secondsRemaining === flatRoutine[0].dur) speak(`Starting: ${flatRoutine[0].name}`);
-        isRunning = true; btn.textContent = "⏸ Pause";
+        isRunning = true; 
+        btn.textContent = "⏸ Pause";
+        await requestWakeLock();
         timerInterval = setInterval(tick, 1000);
       }
     }
 
     function resetTimer() {
-      clearInterval(timerInterval); isRunning = false;
+      clearInterval(timerInterval); 
+      isRunning = false;
+      releaseWakeLock();
       generateFlatRoutine();
       currentIdx = 0; 
       secondsRemaining = flatRoutine.length > 0 ? flatRoutine[0].dur : 0;
@@ -374,6 +430,7 @@
         appData.builderRoutine = JSON.parse(JSON.stringify(PRESET_ROUTINES[pKey].blocks));
         generateFlatRoutine();
         resetTimer();
+        saveToStorage();
         renderApp();
       }
     };
@@ -382,11 +439,7 @@
     function renderApp() {
       const tabs = document.getElementById("main-tabs");
       tabs.innerHTML = `<button class="tab-btn ${activeTab==='tab-hud'?'active':''}" onclick="switchTab('tab-hud')">⏱️ Timer HUD</button>`;
-      
-      appData.sections.forEach(sec => {
-        tabs.innerHTML += `<button class="tab-btn ${activeTab===sec.id?'active':''}" onclick="switchTab('${sec.id}')">${sec.title}</button>`;
-      });
-      
+      appData.sections.forEach(sec => { tabs.innerHTML += `<button class="tab-btn ${activeTab===sec.id?'active':''}" onclick="switchTab('${sec.id}')">${sec.title}</button>`; });
       tabs.innerHTML += `<button class="tab-btn ${activeTab==='tab-builder'?'active':''}" onclick="switchTab('tab-builder')">📝 Builder</button>`;
       tabs.innerHTML += `<button class="tab-btn add-btn" onclick="openNewSectionModal()">+</button>`;
 
@@ -422,7 +475,6 @@
         </section>
 
         <section id="tab-builder" class="view-panel ${activeTab==='tab-builder'?'active':''}">
-          
           <div class="preset-row">
             <select id="preset-selector" class="preset-dropdown">
               <option value="fencing-strip">Strip-Ready Fencing Warm-Up (12 min)</option>
@@ -433,7 +485,6 @@
             </select>
             <button class="btn btn-secondary" style="flex:0 0 auto;" onclick="loadPreset()">Load Preset</button>
           </div>
-
           <div class="section-title">
             <div>
               <span style="font-size:0.8rem; color:var(--text-muted); display:block; font-weight:normal;">Currently Editing:</span>
@@ -462,16 +513,7 @@
             </div>
           </div>
         `).join('');
-
-        main.innerHTML += `
-          <section id="${sec.id}" class="view-panel ${activeTab===sec.id?'active':''}">
-            <div class="section-title">
-              ${sec.title}
-              <button class="btn-sm" onclick="openNewDrillModal('${sec.id}')">+ New Drill</button>
-            </div>
-            <div class="grid-list">${drillsHTML}</div>
-          </section>
-        `;
+        main.innerHTML += `<section id="${sec.id}" class="view-panel ${activeTab===sec.id?'active':''}"><div class="section-title">${sec.title}<button class="btn-sm" onclick="openNewDrillModal('${sec.id}')">+ New Drill</button></div><div class="grid-list">${drillsHTML}</div></section>`;
       });
 
       renderBuilderList();
@@ -485,33 +527,10 @@
       bList.innerHTML = "";
       appData.builderRoutine.forEach((block, idx) => {
         if (block.type === 'item') {
-          bList.innerHTML += `
-            <div class="builder-item">
-              <div><span class="phase-badge ${block.phase}" style="font-size:0.6rem; padding:4px 8px; margin:0 8px 0 0;">${block.phase}</span> ${block.name} (${block.dur}s)</div>
-              <button class="btn-sm" style="background:transparent; border:none; color:red;" onclick="removeBuilderBlock(${idx})">✕</button>
-            </div>
-          `;
+          bList.innerHTML += `<div class="builder-item"><div><span class="phase-badge ${block.phase}" style="font-size:0.6rem; padding:4px 8px; margin:0 8px 0 0;">${block.phase}</span> ${block.name} (${block.dur}s)</div><button class="btn-sm" style="background:transparent; border:none; color:red;" onclick="removeBuilderBlock(${idx})">✕</button></div>`;
         } else if (block.type === 'loop') {
-          let itemsHtml = block.items.map((sub, sIdx) => `
-            <div class="builder-item" style="padding:8px;">
-              <div><span class="phase-badge ${sub.phase}" style="font-size:0.6rem; padding:4px 8px; margin:0 8px 0 0;">${sub.phase}</span> ${sub.name} (${sub.dur}s)</div>
-              <button class="btn-sm" style="background:transparent; border:none; color:red;" onclick="removeLoopItem(${idx}, ${sIdx})">✕</button>
-            </div>
-          `).join('');
-
-          bList.innerHTML += `
-            <div class="builder-loop">
-              <div class="loop-header">
-                <span>🔄 Repeat Block x${block.times}</span>
-                <div style="display:flex; gap:8px;">
-                  <button class="btn-sm" onclick="changeLoopTimes(${idx})">Edit Times</button>
-                  <button class="btn-sm" style="background:#ef4444; border:none;" onclick="removeBuilderBlock(${idx})">Delete Block</button>
-                </div>
-              </div>
-              <div class="loop-items">${itemsHtml}</div>
-              <button class="btn-sm" style="align-self:flex-start;" onclick="openAddStandardIntervalModal(${idx})">+ Add to Loop</button>
-            </div>
-          `;
+          let itemsHtml = block.items.map((sub, sIdx) => `<div class="builder-item" style="padding:8px;"><div><span class="phase-badge ${sub.phase}" style="font-size:0.6rem; padding:4px 8px; margin:0 8px 0 0;">${sub.phase}</span> ${sub.name} (${sub.dur}s)</div><button class="btn-sm" style="background:transparent; border:none; color:red;" onclick="removeLoopItem(${idx}, ${sIdx})">✕</button></div>`).join('');
+          bList.innerHTML += `<div class="builder-loop"><div class="loop-header"><span>🔄 Repeat Block x${block.times}</span><div style="display:flex; gap:8px;"><button class="btn-sm" onclick="changeLoopTimes(${idx})">Edit Times</button><button class="btn-sm" style="background:#ef4444; border:none;" onclick="removeBuilderBlock(${idx})">Delete</button></div></div><div class="loop-items">${itemsHtml}</div><button class="btn-sm" style="align-self:flex-start;" onclick="openAddStandardIntervalModal(${idx})">+ Add to Loop</button></div>`;
         }
       });
     }
@@ -519,168 +538,112 @@
     function renderHUDList() {
       const container = document.getElementById("hud-routine-list");
       if(!container) return;
-      container.innerHTML = flatRoutine.map((item, i) => `
-        <div class="hud-routine-item ${i === currentIdx ? 'active-item' : ''}">
-          <span>${i+1}. ${item.name} ${item.loopName ? ` <small style="color:var(--text-muted)">(${item.loopName})</small>` : ''}</span>
-          <span>${item.dur}s</span>
-        </div>
-      `).join('');
+      container.innerHTML = flatRoutine.map((item, i) => `<div class="hud-routine-item ${i === currentIdx ? 'active-item' : ''}"><span>${i+1}. ${item.name} ${item.loopName ? ` <small style="color:var(--text-muted)">(${item.loopName})</small>` : ''}</span><span>${item.dur}s</span></div>`).join('');
     }
 
     // --- ACTIONS & MODALS ---
     window.switchTab = function(id) { activeTab = id; renderApp(); };
     window.toggleHUDList = function() { document.getElementById("hud-routine-list").classList.toggle("open"); };
-
     const modal = document.getElementById("modal");
     const mBody = document.getElementById("modal-body");
-
     function closeModal() { modal.classList.remove("open"); }
 
     window.openSettingsModal = function() {
-      let voiceOptions = availableVoices.map(v => 
-        `<option value="${v.voiceURI}" ${v.voiceURI === appData.voiceURI ? 'selected' : ''}>
-          ${v.name} (${v.lang})
-        </option>`
-      ).join('');
-      
+      let voiceOptions = availableVoices.map(v => `<option value="${v.voiceURI}" ${v.voiceURI === appData.voiceURI ? 'selected' : ''}>${v.name} (${v.lang})</option>`).join('');
       if(voiceOptions === "") voiceOptions = `<option>Default System Voice</option>`;
-
       mBody.innerHTML = `
         <h3>Audio Settings</h3>
-        
         <label style="font-size:0.9rem; color:var(--text-muted); margin-top:8px;">Voice Selection</label>
-        <select id="voiceSelect" style="width:100%; margin-bottom:12px;">
-          ${voiceOptions}
-        </select>
-        
+        <select id="voiceSelect" style="width:100%; margin-bottom:12px;">${voiceOptions}</select>
         <label style="font-size:0.9rem; color:var(--text-muted);">Speech Speed: <span id="rateLabel">${appData.voiceRate}</span>x</label>
         <input type="range" id="voiceRate" min="0.5" max="1.5" step="0.05" value="${appData.voiceRate}" style="width:100%; margin-bottom:12px;" oninput="document.getElementById('rateLabel').innerText = this.value">
-        
-        <div style="display:flex; gap:8px; margin-top:10px;">
-          <button class="btn btn-primary" onclick="saveSettings()">Save & Test</button>
-          <button class="btn btn-secondary" onclick="closeModal()">Close</button>
-        </div>
+        <div style="display:flex; gap:8px; margin-top:10px;"><button class="btn btn-primary" onclick="saveSettings()">Save</button><button class="btn btn-secondary" onclick="closeModal()">Close</button></div>
       `;
       modal.classList.add("open");
     };
     
     window.saveSettings = function() {
       const selected = document.getElementById("voiceSelect").value;
-      if (selected !== "Default System Voice") {
-        appData.voiceURI = selected;
-      }
+      if (selected !== "Default System Voice") appData.voiceURI = selected;
       appData.voiceRate = parseFloat(document.getElementById("voiceRate").value);
-      speak("Voice settings updated successfully.");
+      saveToStorage();
+      speak("Voice settings updated and saved.");
       closeModal();
     };
 
     window.openNewSectionModal = function() {
-      mBody.innerHTML = `
-        <h3>Create New Section</h3>
-        <input id="secIcon" placeholder="Icon (e.g. 🏋️)" value="🏋️">
-        <input id="secName" placeholder="Section Name">
-        <div style="display:flex; gap:8px; margin-top:10px;">
-          <button class="btn btn-primary" onclick="saveNewSection()">Save</button>
-          <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-        </div>
-      `;
+      mBody.innerHTML = `<h3>Create New Section</h3><input id="secIcon" placeholder="Icon (e.g. 🏋️)" value="🏋️"><input id="secName" placeholder="Section Name"><div style="display:flex; gap:8px; margin-top:10px;"><button class="btn btn-primary" onclick="saveNewSection()">Save</button><button class="btn btn-secondary" onclick="closeModal()">Cancel</button></div>`;
       modal.classList.add("open");
     };
 
     window.saveNewSection = function() {
-      const icon = document.getElementById("secIcon").value || "⚡";
       const name = document.getElementById("secName").value;
       if(!name) return alert("Needs a name!");
       const id = "sec_" + Date.now();
-      appData.sections.push({ id, title: `${icon} ${name}`, drills: [] });
+      appData.sections.push({ id, title: `${document.getElementById("secIcon").value || "⚡"} ${name}`, drills: [] });
+      saveToStorage();
       closeModal(); renderApp(); switchTab(id);
     };
 
     window.openNewDrillModal = function(secId) {
-      mBody.innerHTML = `
-        <h3>Add Drill to Library</h3>
-        <input id="dName" placeholder="Drill Name">
-        <input id="dTime" type="number" placeholder="Duration (seconds)" value="30">
-        <input id="dCue" placeholder="Spoken Audio Cue">
-        <select id="dType"><option value="work">Work (Green)</option><option value="rest">Rest (Blue)</option><option value="prep">Prep (Orange)</option></select>
-        <div style="display:flex; gap:8px; margin-top:10px;">
-          <button class="btn btn-primary" onclick="saveNewDrill('${secId}')">Save</button>
-          <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-        </div>
-      `;
+      mBody.innerHTML = `<h3>Add Drill</h3><input id="dName" placeholder="Drill Name"><input id="dTime" type="number" placeholder="Duration (seconds)" value="30"><input id="dCue" placeholder="Spoken Audio Cue"><select id="dType"><option value="work">Work (Green)</option><option value="rest">Rest (Blue)</option><option value="prep">Prep (Orange)</option></select><div style="display:flex; gap:8px; margin-top:10px;"><button class="btn btn-primary" onclick="saveNewDrill('${secId}')">Save</button><button class="btn btn-secondary" onclick="closeModal()">Cancel</button></div>`;
       modal.classList.add("open");
     };
 
     window.saveNewDrill = function(secId) {
-      const sec = appData.sections.find(s => s.id === secId);
-      sec.drills.push({
+      appData.sections.find(s => s.id === secId).drills.push({
         name: document.getElementById("dName").value || "New Drill",
         dur: parseInt(document.getElementById("dTime").value) || 30,
         cue: document.getElementById("dCue").value || "",
         type: document.getElementById("dType").value
       });
+      saveToStorage();
       closeModal(); renderApp();
     };
 
     window.addDrillToBuilder = function(name, dur, phase) {
       appData.builderRoutine.push({ type: "item", name, dur, phase });
-      appData.routineName = "Custom Sequence"; // Rename if modifying preset
-      generateFlatRoutine();
-      renderApp();
+      appData.routineName = "Custom Sequence";
+      saveToStorage(); generateFlatRoutine(); renderApp();
     };
 
     window.addLoopToBuilder = function() {
       appData.builderRoutine.push({ type: "loop", times: 2, items: [] });
       appData.routineName = "Custom Sequence";
-      renderApp();
+      saveToStorage(); renderApp();
     };
 
     window.changeLoopTimes = function(idx) {
       const t = prompt("How many times should this block repeat?", appData.builderRoutine[idx].times);
       if(t && !isNaN(t)) {
         appData.builderRoutine[idx].times = parseInt(t);
-        generateFlatRoutine(); renderApp();
+        saveToStorage(); generateFlatRoutine(); renderApp();
       }
     };
 
     window.removeBuilderBlock = function(idx) {
       appData.builderRoutine.splice(idx, 1);
       appData.routineName = "Custom Sequence";
-      generateFlatRoutine(); renderApp();
+      saveToStorage(); generateFlatRoutine(); renderApp();
     };
 
     window.removeLoopItem = function(loopIdx, itemIdx) {
       appData.builderRoutine[loopIdx].items.splice(itemIdx, 1);
       appData.routineName = "Custom Sequence";
-      generateFlatRoutine(); renderApp();
+      saveToStorage(); generateFlatRoutine(); renderApp();
     };
 
     window.openAddStandardIntervalModal = function(loopIdx = -1) {
-      mBody.innerHTML = `
-        <h3>Add Interval to ${loopIdx >= 0 ? 'Loop' : 'Sequence'}</h3>
-        <input id="iName" placeholder="Name (e.g. Rest, Burpees)">
-        <input id="iTime" type="number" placeholder="Duration (seconds)" value="15">
-        <select id="iType"><option value="work">Work (Green)</option><option value="rest" selected>Rest (Blue)</option><option value="prep">Prep (Orange)</option></select>
-        <div style="display:flex; gap:8px; margin-top:10px;">
-          <button class="btn btn-primary" onclick="saveStandardInterval(${loopIdx})">Add</button>
-          <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
-        </div>
-      `;
+      mBody.innerHTML = `<h3>Add Interval</h3><input id="iName" placeholder="Name (e.g. Rest, Burpees)"><input id="iTime" type="number" placeholder="Duration (seconds)" value="15"><select id="iType"><option value="work">Work (Green)</option><option value="rest" selected>Rest (Blue)</option><option value="prep">Prep (Orange)</option></select><div style="display:flex; gap:8px; margin-top:10px;"><button class="btn btn-primary" onclick="saveStandardInterval(${loopIdx})">Add</button><button class="btn btn-secondary" onclick="closeModal()">Cancel</button></div>`;
       modal.classList.add("open");
     };
 
     window.saveStandardInterval = function(loopIdx) {
-      const item = {
-        type: "item",
-        name: document.getElementById("iName").value || "Interval",
-        dur: parseInt(document.getElementById("iTime").value) || 15,
-        phase: document.getElementById("iType").value
-      };
+      const item = { type: "item", name: document.getElementById("iName").value || "Interval", dur: parseInt(document.getElementById("iTime").value) || 15, phase: document.getElementById("iType").value };
       if (loopIdx >= 0) appData.builderRoutine[loopIdx].items.push(item);
       else appData.builderRoutine.push(item);
-      
       appData.routineName = "Custom Sequence";
-      closeModal(); generateFlatRoutine(); renderApp();
+      saveToStorage(); closeModal(); generateFlatRoutine(); renderApp();
     };
 
     // INIT
